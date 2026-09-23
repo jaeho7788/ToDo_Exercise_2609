@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#6c5ce7">
+<title>Senior Health Todo</title>
+<style>
+  :root {
+    --bg1:#eef2ff; --bg2:#fdf2f8; --card:rgba(255,255,255,.78); --border:rgba(255,255,255,.9);
+    --text:#1e1b3a; --muted:#6b6b85; --line:rgba(30,27,58,.10);
+    --accent:#6c5ce7; --accent2:#a29bfe; --ok:#10b981; --warn:#f59e0b; --danger:#ef4444;
+    --shadow:0 10px 30px rgba(76,60,180,.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg1:#14122b; --bg2:#1f1440; --card:rgba(40,36,80,.62); --border:rgba(255,255,255,.08);
+      --text:#f3f1ff; --muted:#a9a6c9; --line:rgba(255,255,255,.12); --shadow:0 10px 30px rgba(0,0,0,.35); }
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; min-height:100vh; color:var(--text); font-size:18px; line-height:1.5;
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Malgun Gothic",sans-serif;
+    background:radial-gradient(1200px 600px at 10% -10%, var(--bg2), transparent), linear-gradient(160deg,var(--bg1),var(--bg2)); background-attachment:fixed; }
+  main { max-width:640px; margin:0 auto; padding:24px 16px 64px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:28px; padding:22px; margin-bottom:18px;
+    box-shadow:var(--shadow); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); }
+  h1 { font-size:28px; margin:0; letter-spacing:-.5px; }
+  h2 { font-size:20px; margin:0 0 14px; }
+  .muted { color:var(--muted); font-size:15px; }
+  button { font:inherit; cursor:pointer; color:inherit; }
+  .btn { border:0; border-radius:16px; padding:14px 20px; font-weight:700; background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff; min-height:52px; }
+  .btn.ghost { background:transparent; color:var(--accent); border:2px solid var(--line); }
+  .btn.small { min-height:40px; padding:8px 14px; font-size:15px; border-radius:12px; }
+  .btn:focus-visible, input:focus-visible, .row:focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
+  input[type=text], input[type=password], input[type=tel] { width:100%; padding:14px 16px; font-size:18px; border-radius:16px;
+    border:2px solid var(--line); background:rgba(255,255,255,.55); color:var(--text); }
+  @media (prefers-color-scheme: dark) { input[type=text], input[type=password], input[type=tel] { background:rgba(0,0,0,.25); } }
+  label { display:block; font-weight:600; margin:14px 0 6px; }
+  .err { color:var(--danger); font-weight:600; min-height:1.5em; margin:10px 0 0; }
+  .top { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:18px; }
+
+  /* auth */
+  .tabs { display:flex; gap:6px; background:var(--line); padding:5px; border-radius:18px; margin-bottom:8px; }
+  .tabs button { flex:1; border:0; background:none; padding:12px; border-radius:14px; font-weight:700; color:var(--muted); }
+  .tabs button.on { background:var(--card); color:var(--accent); box-shadow:0 2px 8px rgba(0,0,0,.08); }
+  .hero { text-align:center; margin:28px 0 22px; }
+  .hero .logo { font-size:56px; }
+
+  /* summary */
+  .summary { display:flex; align-items:center; gap:22px; }
+  .ring { position:relative; width:140px; height:140px; flex:none; }
+  .ring svg { transform:rotate(-90deg); }
+  .ring .num { position:absolute; inset:0; display:grid; place-items:center; text-align:center; font-size:30px; font-weight:800; line-height:1.1; }
+  .ring .num small { display:block; font-size:13px; font-weight:600; color:var(--muted); }
+  .badge { display:inline-block; padding:6px 14px; border-radius:99px; font-weight:700; font-size:15px; margin-bottom:8px; }
+  .badge.ok { background:rgba(16,185,129,.15); color:var(--ok); }
+  .badge.no { background:rgba(245,158,11,.16); color:var(--warn); }
+  .stats { display:flex; gap:10px; margin-top:16px; }
+  .stat { flex:1; text-align:center; padding:10px 6px; border-radius:18px; background:var(--line); }
+  .stat b { display:block; font-size:24px; }
+
+  /* week chart */
+  .week { display:flex; align-items:flex-end; justify-content:space-between; gap:8px; height:150px; position:relative; padding-top:6px; }
+  .week .half { position:absolute; left:0; right:0; top:50%; margin-top:-12px; border-top:2px dashed var(--line); pointer-events:none; }
+  .col { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; gap:6px; }
+  .bar { width:100%; max-width:38px; border-radius:12px 12px 6px 6px; background:var(--line); min-height:6px; transition:height .4s; }
+  .bar.ok { background:linear-gradient(180deg,var(--ok),#34d399); }
+  .bar.part { background:linear-gradient(180deg,var(--warn),#fbbf24); }
+  .col span { font-size:14px; color:var(--muted); font-weight:600; }
+  .col.today span { color:var(--accent); }
+
+  /* calendar */
+  .calhead { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .calhead h2 { margin:0; }
+  .grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; text-align:center; }
+  .grid .dow { font-size:14px; color:var(--muted); font-weight:600; }
+  .day { aspect-ratio:1; display:grid; place-items:center; border-radius:14px; font-size:16px; font-weight:600; background:transparent; }
+  .day.ok { background:var(--ok); color:#fff; }
+  .day.part { background:rgba(245,158,11,.25); }
+  .day.today { outline:3px solid var(--accent); }
+  .legend { display:flex; gap:16px; margin-top:12px; font-size:14px; color:var(--muted); flex-wrap:wrap; }
+  .legend i { display:inline-block; width:14px; height:14px; border-radius:5px; vertical-align:-2px; margin-right:6px; }
+
+  /* checklist */
+  .list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; }
+  .row { display:flex; align-items:center; gap:14px; padding:16px 18px; border-radius:20px; background:var(--card); border:2px solid var(--line);
+    cursor:pointer; user-select:none; transition:transform .1s, background .2s; }
+  .row:active { transform:scale(.98); }
+  .box { width:34px; height:34px; border-radius:11px; border:3px solid var(--accent2); display:grid; place-items:center; flex:none; color:#fff; font-size:22px; font-weight:800; }
+  .row .t { flex:1; font-size:20px; font-weight:600; word-break:break-word; }
+  .row.done { background:rgba(16,185,129,.10); border-color:rgba(16,185,129,.35); }
+  .row.done .box { background:var(--ok); border-color:var(--ok); }
+  .row.done .t { text-decoration:line-through; color:var(--ok); }
+  .row.edit { cursor:default; }
+  .row.edit:active { transform:none; }
+  .row.dragging { opacity:.4; }
+  .row.over { box-shadow:0 -4px 0 var(--accent); }
+  .handle { cursor:grab; color:var(--muted); font-size:22px; padding:0 4px; touch-action:none; }
+  .icon { border:0; background:var(--line); width:40px; height:40px; border-radius:12px; font-size:16px; flex:none; }
+  .icon.del { color:var(--danger); }
+  .add { display:flex; gap:10px; margin-top:14px; }
+  .empty { text-align:center; padding:20px; color:var(--muted); }
+  .hint { margin-top:10px; }
+  @media (max-width:420px) { .summary { flex-direction:column; text-align:center; } h1 { font-size:24px; } }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
+</style>
+</head>
+<body>
+<main id="app"></main>
+
+<script>
+/* ---------- 저장소 (localStorage) ---------- */
+const USERS_KEY = 'sht-users-v1', SESSION_KEY = 'sht-session-v1';
+const MAX_ITEMS = 10, GOAL = 0.5;
+const DEFAULT_ITEMS = ['걷기', '맨손체조', '탄수화물 줄이기', '안면체조'];
+
+const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
+const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { alert('저장 공간에 문제가 있어 저장하지 못했습니다.'); } };
+let users = load(USERS_KEY, {});
+let me = null; // 로그인한 사용자 id
+const saveUsers = () => store(USERS_KEY, users);
+
+/* ---------- 유틸 ---------- */
+const h = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
+const pad = n => String(n).padStart(2, '0');
+const key = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const todayKey = () => key(new Date());
+const uid = () => Math.random().toString(36).slice(2, 9);
+
+async function hashPw(pw, salt) {
+  try {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(salt + pw));
+    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (e) { return 'x:' + btoa(unescape(encodeURIComponent(salt + pw))); } // subtle 미지원 환경 대비
+}
+
+/* ---------- 성취도 계산 ---------- */
+// 오늘 기록은 현재 체크항목 기준으로 동기화, 지난 날짜는 당시 total 유지
+function sync(u) {
+  const e = u.log[todayKey()];
+  if (!e) return;
+  const ids = new Set(u.items.map(i => i.id));
+  e.done = e.done.filter(id => ids.has(id));
+  e.total = u.items.length;
+}
+const ratio = (u, k) => { const e = u.log[k]; return e && e.total ? e.done.length / e.total : 0; };
+const achieved = (u, k) => ratio(u, k) >= GOAL && !!u.log[k] && u.log[k].done.length > 0;
+function streak(u) {
+  const d = new Date();
+  if (!achieved(u, key(d))) d.setDate(d.getDate() - 1);
+  let n = 0;
+  while (achieved(u, key(d))) { n++; d.setDate(d.getDate() - 1); }
+  return n;
+}
+
+/* ---------- 화면 ---------- */
+const app = document.getElementById('app');
+let authTab = 'login', editMode = false, calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+function render() {
+  app.innerHTML = '';
+  app.append(me && users[me] ? appView(users[me]) : authView());
+}
+
+/* ----- 로그인 / 회원가입 ----- */
+function authView() {
+  const wrap = h('div');
+  wrap.append(h('div', { className: 'hero' }, h('div', { className: 'logo', textContent: '💪' }),
+    h('h1', { textContent: 'Senior Health Todo' }),
+    h('p', { className: 'muted', textContent: '매일 건강 습관, 함께 체크해요' })));
+
+  const card = h('div', { className: 'card' });
+  const tabs = h('div', { className: 'tabs', role: 'tablist' });
+  [['login', '로그인'], ['signup', '회원가입']].forEach(([k, label]) => {
+    tabs.append(h('button', { textContent: label, className: authTab === k ? 'on' : '', onclick: () => { authTab = k; render(); } }));
+  });
+  card.append(tabs);
+
+  const form = h('form', { noValidate: true });
+  const field = (label, name, type, extra = {}) => {
+    const id = 'f-' + name;
+    form.append(h('label', { htmlFor: id, textContent: label }), h('input', { id, name, type, autocomplete: 'off', ...extra }));
+  };
+  field('아이디', 'id', 'text', { autocapitalize: 'none' });
+  field('비밀번호', 'pw', 'password', { autocomplete: authTab === 'login' ? 'current-password' : 'new-password' });
+  if (authTab === 'signup') {
+    field('이름', 'name', 'text');
+    field('전화번호', 'phone', 'tel', { placeholder: '010-1234-5678', inputMode: 'tel' });
+  }
+  const err = h('p', { className: 'err', role: 'alert' });
+  form.append(err, h('button', { className: 'btn', type: 'submit', style: 'width:100%;margin-top:8px', textContent: authTab === 'login' ? '로그인' : '가입하기' }));
+
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const v = Object.fromEntries(new FormData(form));
+    const id = (v.id || '').trim().toLowerCase();
+    const fail = m => { err.textContent = m; };
+    if (authTab === 'login') {
+      const u = users[id];
+      if (!id || !v.pw) return fail('아이디와 비밀번호를 입력해 주세요.');
+      if (!u || u.hash !== await hashPw(v.pw, u.salt)) return fail('아이디 또는 비밀번호가 맞지 않습니다.');
+      login(id);
+    } else {
+      const name = (v.name || '').trim(), phone = (v.phone || '').trim(), digits = phone.replace(/\D/g, '');
+      if (!/^[a-z0-9_]{4,20}$/.test(id)) return fail('아이디는 영문 소문자·숫자·밑줄 4~20자로 입력해 주세요.');
+      if (users[id]) return fail('이미 사용 중인 아이디입니다.');
+      if ((v.pw || '').length < 4) return fail('비밀번호는 4자 이상 입력해 주세요.');
+      if (!name) return fail('이름을 입력해 주세요.');
+      if (!/^[\d-]+$/.test(phone) || digits.length < 9 || digits.length > 11) return fail('전화번호를 올바르게 입력해 주세요.');
+      const salt = uid() + uid();
+      users[id] = { id, salt, hash: await hashPw(v.pw, salt), name, phone,
+        items: DEFAULT_ITEMS.map(text => ({ id: uid(), text })), log: {} };
+      saveUsers();
+      login(id);
+    }
+  };
+  card.append(form);
+  wrap.append(card, h('p', { className: 'muted', style: 'text-align:center', textContent: '이 기기의 브라우저에만 저장됩니다.' }));
+  return wrap;
+}
+
+function login(id) { me = id; store(SESSION_KEY, id); editMode = false; render(); }
+function logout() { me = null; try { localStorage.removeItem(SESSION_KEY); } catch (e) {} authTab = 'login'; render(); }
+
+/* ----- 메인 ----- */
+function appView(u) {
+  sync(u);
+  const wrap = h('div');
+  wrap.append(h('div', { className: 'top' },
+    h('div', {}, h('h1', { textContent: `${u.name}님, 안녕하세요` }),
+      h('div', { className: 'muted', textContent: new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }) })),
+    h('button', { className: 'btn ghost small', textContent: '로그아웃', onclick: logout })));
+  wrap.append(checklistCard(u), summaryCard(u), weekCard(u), calendarCard(u));
+  return wrap;
+}
+
+function summaryCard(u) {
+  const e = u.log[todayKey()], done = e ? e.done.length : 0, total = u.items.length;
+  const r = total ? done / total : 0, ok = achieved(u, todayKey());
+  const C = 2 * Math.PI * 58;
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('width', 140); svg.setAttribute('height', 140); svg.setAttribute('viewBox', '0 0 140 140');
+  const circle = (stroke, extra = {}) => {
+    const c = document.createElementNS(ns, 'circle');
+    Object.entries({ cx: 70, cy: 70, r: 58, fill: 'none', 'stroke-width': 14, 'stroke-linecap': 'round', stroke, ...extra }).forEach(([k, v]) => c.setAttribute(k, v));
+    return c;
+  };
+  svg.append(circle('rgba(120,120,160,.18)'),
+    circle(ok ? 'var(--ok)' : 'var(--accent)', { 'stroke-dasharray': C, 'stroke-dashoffset': C * (1 - r) }));
+  const days = Object.keys(u.log).filter(k => achieved(u, k)).length;
+
+  const ring = h('div', { className: 'ring' }, svg, h('div', { className: 'num' }, h('div', {}, `${Math.round(r * 100)}%`, h('small', { textContent: `${done}/${total} 완료` }))));
+  const msg = h('div', {},
+    h('span', { className: 'badge ' + (ok ? 'ok' : 'no'), textContent: ok ? '🎉 오늘 목표 달성!' : '목표까지 조금만 더!' }),
+    h('div', { textContent: ok ? '정말 잘하고 계세요.' : `항목의 50% 이상(${Math.ceil(total * GOAL)}개)을 하면 달성이에요.` }));
+  const card = h('div', { className: 'card' }, h('h2', { textContent: '오늘의 성취도' }), h('div', { className: 'summary' }, ring, msg));
+  card.append(h('div', { className: 'stats' },
+    h('div', { className: 'stat' }, h('b', { textContent: `${streak(u)}일` }), h('span', { className: 'muted', textContent: '연속 달성' })),
+    h('div', { className: 'stat' }, h('b', { textContent: `${days}일` }), h('span', { className: 'muted', textContent: '누적 달성' }))));
+  return card;
+}
+
+function weekCard(u) {
+  const card = h('div', { className: 'card' }, h('h2', { textContent: '최근 7일' }));
+  const week = h('div', { className: 'week' }, h('div', { className: 'half' }));
+  const d = new Date(); d.setDate(d.getDate() - 6);
+  for (let i = 0; i < 7; i++, d.setDate(d.getDate() + 1)) {
+    const k = key(d), r = ratio(u, k), isToday = k === todayKey();
+    const cls = achieved(u, k) ? 'ok' : r > 0 ? 'part' : '';
+    week.append(h('div', { className: 'col' + (isToday ? ' today' : ''), title: `${k} ${Math.round(r * 100)}%` },
+      h('div', { className: 'bar ' + cls, style: `height:${Math.max(r * 100 * 0.8, 4)}%` }),
+      h('span', { textContent: isToday ? '오늘' : '일월화수목금토'[d.getDay()] })));
+  }
+  card.append(week, h('p', { className: 'muted hint', textContent: '점선 위로 올라가면 그날 목표 달성이에요.' }));
+  return card;
+}
+
+function calendarCard(u) {
+  const y = calMonth.getFullYear(), m = calMonth.getMonth();
+  const card = h('div', { className: 'card' });
+  card.append(h('div', { className: 'calhead' },
+    h('button', { className: 'icon', textContent: '◀', 'aria-label': '이전 달', onclick: () => { calMonth = new Date(y, m - 1, 1); render(); } }),
+    h('h2', { textContent: `${y}년 ${m + 1}월` }),
+    h('button', { className: 'icon', textContent: '▶', 'aria-label': '다음 달', onclick: () => { calMonth = new Date(y, m + 1, 1); render(); } })));
+  const grid = h('div', { className: 'grid' });
+  [...'일월화수목금토'].forEach(c => grid.append(h('div', { className: 'dow', textContent: c })));
+  for (let i = 0; i < new Date(y, m, 1).getDay(); i++) grid.append(h('div'));
+  for (let day = 1; day <= new Date(y, m + 1, 0).getDate(); day++) {
+    const k = key(new Date(y, m, day)), r = ratio(u, k);
+    grid.append(h('div', { className: 'day ' + (achieved(u, k) ? 'ok' : r > 0 ? 'part' : '') + (k === todayKey() ? ' today' : ''), textContent: day, title: `${Math.round(r * 100)}%` }));
+  }
+  card.append(grid, h('div', { className: 'legend' },
+    h('span', {}, h('i', { style: 'background:var(--ok)' }), '목표 달성'),
+    h('span', {}, h('i', { style: 'background:rgba(245,158,11,.4)' }), '일부 달성')));
+  return card;
+}
+
+function checklistCard(u) {
+  const card = h('div', { className: 'card' });
+  card.append(h('div', { className: 'calhead' }, h('h2', { style: 'margin:0', textContent: '오늘의 건강 체크' }),
+    h('button', { className: 'btn small ' + (editMode ? '' : 'ghost'), textContent: editMode ? '완료' : '편집', onclick: () => { editMode = !editMode; render(); } })));
+
+  const e = u.log[todayKey()];
+  const list = h('ul', { className: 'list' });
+  if (!u.items.length) list.append(h('li', { className: 'empty', textContent: '체크항목이 없습니다. 편집을 눌러 추가해 보세요.' }));
+
+  u.items.forEach((it, i) => {
+    const done = !!e && e.done.includes(it.id);
+    const row = h('li', { className: 'row' + (done ? ' done' : '') + (editMode ? ' edit' : '') });
+    if (!editMode) {
+      row.tabIndex = 0; row.role = 'checkbox'; row.setAttribute('aria-checked', done);
+      const toggle = () => {
+        const en = u.log[todayKey()] ||= { done: [], total: 0 };
+        en.done = en.done.includes(it.id) ? en.done.filter(x => x !== it.id) : [...en.done, it.id];
+        sync(u); saveUsers(); render();
+      };
+      row.onclick = toggle;
+      row.onkeydown = ev => { if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); toggle(); } };
+      row.append(h('div', { className: 'box', textContent: done ? '✓' : '' }), h('span', { className: 't', textContent: it.text }));
+    } else {
+      const handle = h('span', { className: 'handle', textContent: '⋮⋮', title: '끌어서 순서 변경' });
+      row.draggable = true;
+      row.ondragstart = ev => { row.classList.add('dragging'); ev.dataTransfer.setData('text/plain', i); ev.dataTransfer.effectAllowed = 'move'; };
+      row.ondragend = () => row.classList.remove('dragging');
+      row.ondragover = ev => { ev.preventDefault(); row.classList.add('over'); };
+      row.ondragleave = () => row.classList.remove('over');
+      row.ondrop = ev => { ev.preventDefault(); move(u, +ev.dataTransfer.getData('text/plain'), i); };
+
+      const inp = h('input', { type: 'text', value: it.text, maxLength: 30, 'aria-label': '항목 이름' });
+      const commit = () => { const v = inp.value.trim(); if (v && v !== it.text) { it.text = v; saveUsers(); } else inp.value = it.text; };
+      inp.onblur = commit;
+      inp.onkeydown = ev => { if (ev.key === 'Enter') inp.blur(); };
+      row.append(handle, inp,
+        h('button', { className: 'icon', textContent: '▲', 'aria-label': '위로', disabled: i === 0, onclick: () => move(u, i, i - 1) }),
+        h('button', { className: 'icon', textContent: '▼', 'aria-label': '아래로', disabled: i === u.items.length - 1, onclick: () => move(u, i, i + 1) }),
+        h('button', { className: 'icon del', textContent: '✕', 'aria-label': '삭제', onclick: () => {
+          if (!confirm(`"${it.text}" 항목을 삭제할까요?`)) return;
+          u.items.splice(i, 1); sync(u); saveUsers(); render();
+        } }));
+    }
+    list.append(row);
+  });
+  card.append(list);
+
+  if (editMode) {
+    const full = u.items.length >= MAX_ITEMS;
+    const inp = h('input', { type: 'text', placeholder: full ? '최대 10개까지 만들 수 있어요' : '새 체크항목 (예: 물 마시기)', maxLength: 30, disabled: full, 'aria-label': '새 항목' });
+    const add = () => {
+      const v = inp.value.trim();
+      if (!v || u.items.length >= MAX_ITEMS) return;   // 빈 항목·10개 초과 방지
+      u.items.push({ id: uid(), text: v }); sync(u); saveUsers(); render();
+      const next = app.querySelector('.add input'); if (next) next.focus();
+    };
+    inp.onkeydown = ev => { if (ev.key === 'Enter') add(); };
+    card.append(h('div', { className: 'add' }, inp, h('button', { className: 'btn', textContent: '추가', disabled: full, onclick: add })),
+      h('p', { className: 'muted hint', textContent: `${u.items.length} / ${MAX_ITEMS}개 · 항목을 끌거나 ▲▼로 순서를 바꿀 수 있어요.` }));
+  }
+  return card;
+}
+
+function move(u, from, to) {
+  if (isNaN(from) || from === to || to < 0 || to >= u.items.length) return render();
+  u.items.splice(to, 0, u.items.splice(from, 1)[0]);
+  saveUsers(); render();
+}
+
+/* ---------- 시작 ---------- */
+const savedSession = load(SESSION_KEY, null);
+if (savedSession && users[savedSession]) me = savedSession;
+render();
+</script>
+</body>
+</html>
