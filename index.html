@@ -100,6 +100,14 @@
   .add { display:flex; gap:10px; margin-top:14px; }
   .empty { text-align:center; padding:20px; color:var(--muted); }
   .hint { margin-top:10px; }
+
+  /* 로딩 / 네트워크 오류 */
+  .loading { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:90px 20px; color:var(--muted); text-align:center; }
+  .spinner { width:44px; height:44px; border-radius:50%; border:4px solid var(--line); border-top-color:var(--accent); animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .neterr { display:flex; align-items:center; justify-content:space-between; gap:12px; background:rgba(239,68,68,.12);
+    border:2px solid rgba(239,68,68,.35); color:var(--danger); border-radius:18px; padding:14px 16px; margin-bottom:16px; font-weight:600; }
+  .neterr button { background:none; border:0; color:var(--danger); font-size:18px; font-weight:800; line-height:1; padding:4px; }
   @media (max-width:420px) { .summary { flex-direction:column; text-align:center; } h1 { font-size:24px; } }
   @media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
 </style>
@@ -108,16 +116,19 @@
 <main id="app"></main>
 
 <script>
-/* ---------- 저장소 (localStorage) ---------- */
-const USERS_KEY = 'sht-users-v1', SESSION_KEY = 'sht-session-v1';
+/* ---------- 설정 / 세션 ---------- */
+// Google Apps Script 웹앱: GET ?id=아이디 로 사용자 데이터 조회, POST {id, data} 로 사용자 전체 데이터 저장
+const API_URL = 'https://script.google.com/macros/s/AKfycbyGWvRrp_jqde51nnz7H49DimrLPadT1Tdc2QoMHMhcPkyFu0OZLlkx6esYjO_lXhEc/exec';
+const SESSION_KEY = 'sht-session-v1';
 const MAX_ITEMS = 10, GOAL = 0.5;
 const DEFAULT_ITEMS = ['걷기', '맨손체조', '탄수화물 줄이기', '안면체조'];
+const REQUEST_TIMEOUT = 15000;
 
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
-const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { alert('저장 공간에 문제가 있어 저장하지 못했습니다.'); } };
-let users = load(USERS_KEY, {});
-let me = null; // 로그인한 사용자 id
-const saveUsers = () => store(USERS_KEY, users);
+const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+
+let me = null;          // 로그인한 사용자 id (세션 표시용으로만 이 기기에 저장)
+let currentUser = null; // 서버에서 불러온 로그인 사용자의 전체 데이터
 
 /* ---------- 유틸 ---------- */
 const h = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
@@ -131,6 +142,71 @@ async function hashPw(pw, salt) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(salt + pw));
     return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
   } catch (e) { return 'x:' + btoa(unescape(encodeURIComponent(salt + pw))); } // subtle 미지원 환경 대비
+}
+
+/* ---------- 서버 통신 (Google Apps Script 웹앱) ---------- */
+async function fetchWithTimeout(url, opts = {}) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT);
+  try { return await fetch(url, { ...opts, signal: ctrl.signal }); }
+  finally { clearTimeout(timer); }
+}
+
+// 서버가 { data: {...} } 형태로 감싸서 응답하는 경우도 함께 지원
+function unwrap(json) {
+  if (json && typeof json === 'object' && !('hash' in json) && json.data && typeof json.data === 'object') return json.data;
+  return json;
+}
+function isEmptyUser(u) { return !u || typeof u !== 'object' || !u.hash || !u.salt; }
+function normalizeUser(id, u) {
+  return { id, salt: u.salt, hash: u.hash, name: u.name || '', phone: u.phone || '',
+    items: Array.isArray(u.items) ? u.items : [], log: u.log && typeof u.log === 'object' ? u.log : {} };
+}
+
+async function apiGetUser(id) {
+  const res = await fetchWithTimeout(`${API_URL}?id=${encodeURIComponent(id)}`, { method: 'GET' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const text = await res.text();
+  if (!text) return null;
+  let json;
+  try { json = JSON.parse(text); } catch (e) { return null; }
+  const data = unwrap(json);
+  return isEmptyUser(data) ? null : data;
+}
+
+async function apiSaveUser(id, data) {
+  const res = await fetchWithTimeout(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // GAS 웹앱의 CORS 사전요청(OPTIONS) 회피
+    body: JSON.stringify({ id, data })
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const text = await res.text();
+  try { return JSON.parse(text); } catch (e) { return text; }
+}
+
+// 현재 사용자 데이터를 서버에 저장 (실패해도 화면은 막지 않고 안내 배너만 표시)
+function saveCurrentUser() {
+  if (!me || !currentUser) return;
+  apiSaveUser(me, currentUser).catch(() => {
+    netError = '변경사항을 저장하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.';
+    render();
+  });
+}
+
+// 로딩/오류 화면을 자동으로 띄우며 API 호출을 실행
+async function callApi(fn, loadingMessage = '불러오는 중...') {
+  loading = true; loadingMsg = loadingMessage; netError = null; render();
+  try {
+    const data = await fn();
+    loading = false; render();
+    return { ok: true, data };
+  } catch (e) {
+    loading = false;
+    netError = '네트워크 오류가 발생했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.';
+    render();
+    return { ok: false };
+  }
 }
 
 /* ---------- 성취도 계산 ---------- */
@@ -155,10 +231,23 @@ function streak(u) {
 /* ---------- 화면 ---------- */
 const app = document.getElementById('app');
 let authTab = 'login', editMode = false, calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+let loading = false, loadingMsg = '불러오는 중...', netError = null;
 
 function render() {
   app.innerHTML = '';
-  app.append(me && users[me] ? appView(users[me]) : authView());
+  if (netError) app.append(errorBanner());
+  if (loading) { app.append(loadingView()); return; }
+  app.append(me && currentUser ? appView(currentUser) : authView());
+}
+
+function loadingView() {
+  return h('div', { className: 'loading' }, h('div', { className: 'spinner', 'aria-hidden': 'true' }), h('p', { textContent: loadingMsg }));
+}
+
+function errorBanner() {
+  return h('div', { className: 'neterr', role: 'alert' },
+    h('span', { textContent: '⚠️ ' + netError }),
+    h('button', { textContent: '✕', 'aria-label': '알림 닫기', onclick: () => { netError = null; render(); } }));
 }
 
 /* ----- 로그인 / 회원가입 ----- */
@@ -194,32 +283,43 @@ function authView() {
     const v = Object.fromEntries(new FormData(form));
     const id = (v.id || '').trim().toLowerCase();
     const fail = m => { err.textContent = m; };
+    err.textContent = '';
+
     if (authTab === 'login') {
-      const u = users[id];
       if (!id || !v.pw) return fail('아이디와 비밀번호를 입력해 주세요.');
+      const res = await callApi(() => apiGetUser(id), '로그인 확인 중...');
+      if (!res.ok) return; // 네트워크 오류: 상단 배너에서 안내
+      const u = res.data;
       if (!u || u.hash !== await hashPw(v.pw, u.salt)) return fail('아이디 또는 비밀번호가 맞지 않습니다.');
+      currentUser = normalizeUser(id, u);
       login(id);
     } else {
       const name = (v.name || '').trim(), phone = (v.phone || '').trim(), digits = phone.replace(/\D/g, '');
       if (!/^[a-z0-9_]{4,20}$/.test(id)) return fail('아이디는 영문 소문자·숫자·밑줄 4~20자로 입력해 주세요.');
-      if (users[id]) return fail('이미 사용 중인 아이디입니다.');
       if ((v.pw || '').length < 4) return fail('비밀번호는 4자 이상 입력해 주세요.');
       if (!name) return fail('이름을 입력해 주세요.');
       if (!/^[\d-]+$/.test(phone) || digits.length < 9 || digits.length > 11) return fail('전화번호를 올바르게 입력해 주세요.');
+
+      const checkRes = await callApi(() => apiGetUser(id), '아이디 확인 중...');
+      if (!checkRes.ok) return;
+      if (checkRes.data) return fail('이미 사용 중인 아이디입니다.');
+
       const salt = uid() + uid();
-      users[id] = { id, salt, hash: await hashPw(v.pw, salt), name, phone,
+      const newUser = { id, salt, hash: await hashPw(v.pw, salt), name, phone,
         items: DEFAULT_ITEMS.map(text => ({ id: uid(), text })), log: {} };
-      saveUsers();
+      const saveRes = await callApi(() => apiSaveUser(id, newUser), '계정을 만드는 중...');
+      if (!saveRes.ok) return;
+      currentUser = newUser;
       login(id);
     }
   };
   card.append(form);
-  wrap.append(card, h('p', { className: 'muted', style: 'text-align:center', textContent: '이 기기의 브라우저에만 저장됩니다.' }));
+  wrap.append(card, h('p', { className: 'muted', style: 'text-align:center', textContent: '이 앱의 데이터는 서버에 안전하게 저장됩니다.' }));
   return wrap;
 }
 
 function login(id) { me = id; store(SESSION_KEY, id); editMode = false; render(); }
-function logout() { me = null; try { localStorage.removeItem(SESSION_KEY); } catch (e) {} authTab = 'login'; render(); }
+function logout() { me = null; currentUser = null; try { localStorage.removeItem(SESSION_KEY); } catch (e) {} authTab = 'login'; render(); }
 
 /* ----- 메인 ----- */
 function appView(u) {
@@ -312,7 +412,7 @@ function checklistCard(u) {
       const toggle = () => {
         const en = u.log[todayKey()] ||= { done: [], total: 0 };
         en.done = en.done.includes(it.id) ? en.done.filter(x => x !== it.id) : [...en.done, it.id];
-        sync(u); saveUsers(); render();
+        sync(u); saveCurrentUser(); render();
       };
       row.onclick = toggle;
       row.onkeydown = ev => { if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); toggle(); } };
@@ -327,7 +427,7 @@ function checklistCard(u) {
       row.ondrop = ev => { ev.preventDefault(); move(u, +ev.dataTransfer.getData('text/plain'), i); };
 
       const inp = h('input', { type: 'text', value: it.text, maxLength: 30, 'aria-label': '항목 이름' });
-      const commit = () => { const v = inp.value.trim(); if (v && v !== it.text) { it.text = v; saveUsers(); } else inp.value = it.text; };
+      const commit = () => { const v = inp.value.trim(); if (v && v !== it.text) { it.text = v; saveCurrentUser(); } else inp.value = it.text; };
       inp.onblur = commit;
       inp.onkeydown = ev => { if (ev.key === 'Enter') inp.blur(); };
       row.append(handle, inp,
@@ -335,7 +435,7 @@ function checklistCard(u) {
         h('button', { className: 'icon', textContent: '▼', 'aria-label': '아래로', disabled: i === u.items.length - 1, onclick: () => move(u, i, i + 1) }),
         h('button', { className: 'icon del', textContent: '✕', 'aria-label': '삭제', onclick: () => {
           if (!confirm(`"${it.text}" 항목을 삭제할까요?`)) return;
-          u.items.splice(i, 1); sync(u); saveUsers(); render();
+          u.items.splice(i, 1); sync(u); saveCurrentUser(); render();
         } }));
     }
     list.append(row);
@@ -348,7 +448,7 @@ function checklistCard(u) {
     const add = () => {
       const v = inp.value.trim();
       if (!v || u.items.length >= MAX_ITEMS) return;   // 빈 항목·10개 초과 방지
-      u.items.push({ id: uid(), text: v }); sync(u); saveUsers(); render();
+      u.items.push({ id: uid(), text: v }); sync(u); saveCurrentUser(); render();
       const next = app.querySelector('.add input'); if (next) next.focus();
     };
     inp.onkeydown = ev => { if (ev.key === 'Enter') add(); };
@@ -361,13 +461,25 @@ function checklistCard(u) {
 function move(u, from, to) {
   if (isNaN(from) || from === to || to < 0 || to >= u.items.length) return render();
   u.items.splice(to, 0, u.items.splice(from, 1)[0]);
-  saveUsers(); render();
+  saveCurrentUser(); render();
 }
 
 /* ---------- 시작 ---------- */
-const savedSession = load(SESSION_KEY, null);
-if (savedSession && users[savedSession]) me = savedSession;
-render();
+(function init() {
+  const savedSession = load(SESSION_KEY, null);
+  if (!savedSession) { render(); return; }
+  (async () => {
+    const res = await callApi(() => apiGetUser(savedSession), '내 정보를 불러오는 중...');
+    if (res.ok && res.data) {
+      me = savedSession;
+      currentUser = normalizeUser(savedSession, res.data);
+    } else if (res.ok) {
+      // 서버에 사용자 정보가 없으면 세션을 정리하고 로그인 화면으로
+      try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
+    }
+    render();
+  })();
+})();
 </script>
 </body>
 </html>

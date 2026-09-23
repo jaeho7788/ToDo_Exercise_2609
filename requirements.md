@@ -22,7 +22,11 @@
 
 ## 3. 데이터 저장 방식
 
-- localstorage
+- Google Apps Script 웹앱 연동 (구 버전: localStorage)
+  - URL: `https://script.google.com/macros/s/AKfycbyGWvRrp_jqde51nnz7H49DimrLPadT1Tdc2QoMHMhcPkyFu0OZLlkx6esYjO_lXhEc/exec`
+  - GET `?id=아이디` → 해당 사용자 데이터 조회
+  - POST `{ id, data }` → 사용자 전체 데이터 저장
+  - 로그인 여부(사용자 id)만 이 기기 localStorage에 세션으로 남겨둠
 
 ## 4. 플랫폼 / 실행 환경
 
@@ -53,4 +57,5 @@
 | 날짜 | 버전 | 변경 내용 |
 |------|------|-----------|
 | 2026-09-21 | v0.1 | 최초 요구사항 작성 |
+| 2026-09-22 | v0.2 | 데이터 저장소를 localStorage → Google Apps Script 웹앱으로 전환, 로딩 화면/네트워크 오류 안내 추가 |
 
